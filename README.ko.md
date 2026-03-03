@@ -134,3 +134,21 @@ report.html
 | JSON | Jackson + jackson-datatype-jsr310 |
 | 차트 | Plotly.js (HTML 인라인) |
 | 빌드 | Gradle + Shadow Plugin |
+
+---
+
+## 기여
+
+버그 리포트, 기능 제안, 아이디어, PR 모두 환영합니다.
+
+- **버그 / 질문** → [이슈 등록](https://github.com/yyubin/hotpath/issues)
+- **기능 제안** → 이슈나 Discussions, 형식 무관
+- **Pull Request** → Fork → 브랜치 → PR, 별도 규칙 없음
+
+기여 가이드라인은 아직 없습니다. 이슈를 열거나 PR을 보내주시면 검토하겠습니다.
+
+---
+
+## 라이선스
+
+[MIT](./LICENSE)

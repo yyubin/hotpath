@@ -185,4 +185,22 @@ report.html
 
 ---
 
+## Contributing
+
+Contributions of all kinds are welcome — bug reports, feature requests, ideas, and pull requests.
+
+- **Bug / question** → [Open an issue](https://github.com/yyubin/hotpath/issues)
+- **Feature suggestion** → Issues or Discussions, any format is fine
+- **Pull request** → Fork → branch → PR, no strict process required
+
+There are no contribution guidelines yet. Just open an issue or send a PR — it will be reviewed.
+
+---
+
+## License
+
+[MIT](./LICENSE)
+
+---
+
 한국어 문서: [README.ko.md](./README.ko.md)

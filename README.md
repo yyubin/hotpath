@@ -1,76 +1,76 @@
 # Hotpath
 
-JFR(Java Flight Recorder) 파일을 분석해 사람이 읽을 수 있는 HTML 리포트로 변환하는 CLI 도구.
+A CLI tool that analyzes Java Flight Recorder (JFR) files and converts them into a human-readable HTML report.
 
 ```
 java -jar hotpath.jar recording.jfr
 ```
 
-→ `report.html` 단일 파일 생성. [샘플 리포트 보기](https://yyubin.github.io/hotpath/sample-report.html)
+Produces a single `report.html` file. [View sample report](https://yyubin.github.io/hotpath/sample-report.html)
 
 ---
 
-## 다운로드
+## Download
 
-[GitHub Releases](https://github.com/yyubin/hotpath/releases/latest) 페이지에서 `hotpath.jar`를 받거나, 아래 명령으로 직접 받는다.
+Download `hotpath.jar` from [GitHub Releases](https://github.com/yyubin/hotpath/releases/latest), or grab it directly:
 
 ```bash
 curl -L https://github.com/yyubin/hotpath/releases/latest/download/hotpath.jar -o hotpath.jar
 java -jar hotpath.jar recording.jfr
 ```
 
-JDK 21 이상 필요. 별도 설치 없음.
+Requires JDK 21+. No installation needed.
 
 ---
 
-## 특징
+## Features
 
-- **JFR 네이티브 파싱** — `jdk.jfr.consumer` 내장 API로 외부 의존성 없이 직접 파싱
-- **단일 패스 스트리밍** — 수백 MB JFR도 메모리 부담 없이 처리
-- **단일 HTML 출력** — CDN 없이 오프라인에서도 열리는 자기완결형 리포트
-- **Fat JAR 배포** — JDK만 있으면 설치 없이 바로 실행
+- **Native JFR parsing** — Uses the built-in `jdk.jfr.consumer` API with zero external dependencies
+- **Single-pass streaming** — Handles recordings of hundreds of MB without memory pressure
+- **Self-contained HTML output** — Works offline with no CDN dependencies
+- **Fat JAR distribution** — Runs anywhere a JDK is installed
 
-## 분석 항목
+## What It Analyzes
 
-| 카테고리 | 수집 지표 |
-|----------|-----------|
-| **CPU** | JVM user/system CPU 사용률 추이, Hot Methods Top 10 |
-| **GC** | GC 횟수, 최대·평균 pause, STW 누적 시간, pause 분포 히스토그램 |
-| **Memory** | 힙 사용량 추이, 총 할당량, 초당 allocation rate, Top Allocators |
-| **Threads** | 피크·평균 스레드 수, Lock Contention 누적, 최장 대기 모니터 |
-| **Findings** | 이상 패턴 자동 감지 (CRITICAL / WARNING / INFO) |
+| Category | Metrics |
+|----------|---------|
+| **CPU** | JVM user/system CPU usage over time, Hot Methods Top 10 |
+| **GC** | GC count, max/avg pause, total STW time, pause distribution histogram |
+| **Memory** | Heap usage over time, total allocation, allocation rate per second, Top Allocators |
+| **Threads** | Peak/avg thread count, lock contention total, longest monitor wait |
+| **Findings** | Automatic anomaly detection (CRITICAL / WARNING / INFO) |
 
-## 리포트 구성
+## Report Layout
 
 ```
-┌─ Summary      Findings 카드 (심각도별 카운트)
-├─ Findings     이슈 목록 + 원인·권고사항
-├─ CPU          load 추이 차트 + Hot Methods 테이블
-├─ GC           pause 타임라인 + 분포 히스토그램 + 통계
-├─ Memory       힙 추이 차트 + Top Allocators 테이블
-└─ Threads      스레드 수 통계 + Lock Contention 상위
+┌─ Summary      Finding cards by severity
+├─ Findings     Issue list with cause and recommendation
+├─ CPU          Load timeline chart + Hot Methods table
+├─ GC           Pause timeline + distribution histogram + stats
+├─ Memory       Heap usage chart + Top Allocators table
+└─ Threads      Thread count stats + Lock Contention table
 ```
 
 ---
 
-## 요구사항
+## Requirements
 
-- JDK 21 이상 (실행 및 빌드)
+- JDK 21+
 
-## 사용법
+## Usage
 
 ```bash
-# 기본 — report.html 생성
+# Basic — outputs report.html
 java -jar hotpath.jar recording.jfr
 
-# 출력 파일 지정
+# Custom output path
 java -jar hotpath.jar recording.jfr -o my-report.html
 
-# 도움말
+# Help
 java -jar hotpath.jar --help
 ```
 
-## 빌드
+## Build from Source
 
 ```bash
 git clone https://github.com/yyubin/hotpath.git
@@ -78,45 +78,81 @@ cd hotpath
 ./gradlew :hotpath-cli:shadowJar
 ```
 
-결과물: `hotpath-cli/build/libs/hotpath.jar` (~3 MB)
+Output: `hotpath-cli/build/libs/hotpath.jar` (~3 MB)
 
 ---
 
-## JFR 녹화 옵션
+## JFR Recording
 
-전체 측정치를 수집하려면 `profile.jfc` 설정으로 녹화해야 한다.
+To capture all metrics, record with the `profile.jfc` configuration:
 
 ```bash
-# 애플리케이션 시작 시 자동 녹화
+# Record on application startup
 java -XX:StartFlightRecording=filename=recording.jfr,settings=profile,dumponexit=true \
      -jar app.jar
 
-# 실행 중인 프로세스에 동적으로 붙이기
+# Attach to a running process
 jcmd <PID> JFR.start name=hotpath settings=profile filename=recording.jfr
 jcmd <PID> JFR.dump name=hotpath filename=recording.jfr
 ```
 
-측정 항목별 필요 이벤트, 오버헤드 기준, 커스텀 JFC 설정은 [JFR-RECORDING-GUIDE.md](./JFR-RECORDING-GUIDE.md) 참고.
+For per-event details, overhead guidelines, and a custom JFC configuration, see [JFR-RECORDING-GUIDE.md](./JFR-RECORDING-GUIDE.md).
 
 ---
 
-## 내부 파이프라인
+## Architecture
+
+### Module Structure
 
 ```
-.jfr
+hotpath/
+├── hotpath-core/                  Analysis logic
+│   └── src/main/java/.../
+│       ├── model/                 Data models (records)
+│       │   ├── AnalysisResult
+│       │   ├── CpuSummary / GcSummary / MemorySummary / ThreadSummary
+│       │   ├── Finding            (CRITICAL / WARNING / INFO)
+│       │   └── TimeBucket         1-second aggregation slot
+│       ├── reader/                JFR parsing
+│       │   ├── JfrReader          Single-pass streaming
+│       │   ├── EventRouter        Dispatches events by type
+│       │   ├── TimelineBuilder    Aggregates into 1s buckets
+│       │   └── handler/
+│       │       ├── CpuHandler     jdk.CPULoad, jdk.ExecutionSample
+│       │       ├── GcHandler      jdk.GarbageCollection, jdk.GCHeapSummary
+│       │       ├── MemoryHandler  jdk.ObjectAllocation*
+│       │       ├── ThreadHandler  jdk.JavaMonitorEnter, jdk.JavaThreadStatistics
+│       │       └── MetaHandler    jdk.JVMInformation
+│       ├── analyzer/              Anomaly detection + Finding generation
+│       │   ├── CpuAnalyzer
+│       │   ├── GcAnalyzer
+│       │   ├── MemoryAnalyzer
+│       │   └── ThreadAnalyzer
+│       └── renderer/
+│           └── HtmlRenderer       AnalysisResult → JSON → report.html
+└── hotpath-cli/                   CLI entry point
+    └── src/main/java/.../
+        ├── HotpathCommand         Picocli command
+        └── Main
+```
+
+### Pipeline
+
+```
+.jfr file
   │
-  ▼  jdk.jfr.consumer.RecordingFile (단일 패스)
+  ▼  jdk.jfr.consumer.RecordingFile (single pass)
 [JfrReader + EventRouter]
   │
   ├─► CpuHandler / GcHandler / MemoryHandler / ThreadHandler
   │
-  ▼  1초 버킷 집계
+  ▼  Aggregate into 1-second buckets
 [TimelineBuilder]
   │
-  ▼  이상 탐지 → Finding 생성
+  ▼  Anomaly detection → generate Findings
 [Analyzers]
   │
-  ▼  AnalysisResult → JSON → HTML 인라인 임베드
+  ▼  AnalysisResult → JSON → inline embed into HTML
 [HtmlRenderer]
   │
   ▼
@@ -125,12 +161,28 @@ report.html
 
 ---
 
-## 기술 스택
+## Roadmap
 
-| 역할 | 기술 |
-|------|------|
-| JFR 파싱 | `jdk.jfr.consumer` (JDK 내장) |
+| Phase | Description | Status |
+|-------|-------------|--------|
+| 1 | JFR → HTML report (CPU, GC, Memory, Threads) | ✅ |
+| 2 | `gc.log` + Gatling `stats.json` integration + cross-source correlation | Planned |
+| 3 | async-profiler flame graph embed | Planned |
+| 4 | Before/after performance comparison (`before.jfr` vs `after.jfr`) | Planned |
+| 5 | Gradle Plugin wrapper | Planned |
+
+---
+
+## Tech Stack
+
+| Role | Technology |
+|------|------------|
+| JFR parsing | `jdk.jfr.consumer` (JDK built-in) |
 | CLI | Picocli 4.7 |
 | JSON | Jackson + jackson-datatype-jsr310 |
-| 차트 | Plotly.js (HTML 인라인) |
-| 빌드 | Gradle + Shadow Plugin |
+| Charts | Plotly.js (inlined in HTML) |
+| Build | Gradle + Shadow Plugin |
+
+---
+
+한국어 문서: [README.ko.md](./README.ko.md)

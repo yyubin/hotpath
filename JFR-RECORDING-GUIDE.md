@@ -1,36 +1,35 @@
-# JFR 녹화 가이드 — Hotpath 분석용 전체 측정 수집
+# JFR Recording Guide — Collecting Full Metrics for Hotpath
 
-Hotpath는 JFR 파일을 기반으로 CPU / GC / Allocation / Lock / Thread 상태를 자동 분석합니다.
-아래 가이드를 따라 녹화하면 **Hotpath가 필요한 대부분의 신호를 수집**할 수 있습니다.
-
----
-
-# 1️⃣ Hotpath가 사용하는 주요 이벤트
-
-| 카테고리            | JFR 이벤트                           | default | profile |    Hotpath 권장    |
-| --------------- | --------------------------------- | :-----: | :-----: | :--------------: |
-| CPU 사용률         | `jdk.CPULoad`                     |    ✅    |    ✅    |         ✅        |
-| Hot Methods     | `jdk.ExecutionSample`             |    ✅    |    ✅    |    ✅ (10~20ms)   |
-| GC 이벤트          | `jdk.GarbageCollection`           |    ✅    |    ✅    |         ✅        |
-| 힙 사용량           | `jdk.GCHeapSummary`               |    ✅    |    ✅    |         ✅        |
-| 객체 할당 (TLAB)    | `jdk.ObjectAllocationInNewTLAB`   |    ❌    |    ✅    |        선택        |
-| 객체 할당 (Outside) | `jdk.ObjectAllocationOutsideTLAB` |    ❌    |    ✅    |        선택        |
-| Lock Contention | `jdk.JavaMonitorEnter`            |    ❌    |    일부   | ✅ (threshold 조정) |
-| Thread Park     | `jdk.ThreadPark`                  |    ❌    |    일부   |         ✅        |
-| 스레드 통계          | `jdk.JavaThreadStatistics`        |    ✅    |    ✅    |         ✅        |
-| JVM 정보          | `jdk.JVMInformation`              |    ✅    |    ✅    |         ✅        |
-
-### ✔ 기본 결론
-
-* **일반 분석 → `profile.jfc` 사용**
-* **Lock / Allocation까지 깊게 보려면 → `hotpath.jfc` 사용**
-* 운영 환경에서는 오버헤드를 고려해 Allocation 이벤트는 상황에 따라 끄는 것을 권장
+Hotpath analyzes CPU, GC, memory allocation, lock contention, and thread activity from JFR files.
+Follow this guide to ensure your recording captures all the signals Hotpath needs.
 
 ---
 
-# 2️⃣ 가장 쉬운 방법 (권장)
+## 1. Events Used by Hotpath
 
-애플리케이션 시작할 때 바로 녹화
+| Category | JFR Event | default | profile | Hotpath Recommended |
+|----------|-----------|:-------:|:-------:|:-------------------:|
+| CPU usage | `jdk.CPULoad` | ✅ | ✅ | ✅ |
+| Hot Methods | `jdk.ExecutionSample` | ✅ | ✅ | ✅ (10–20 ms) |
+| GC events | `jdk.GarbageCollection` | ✅ | ✅ | ✅ |
+| Heap usage | `jdk.GCHeapSummary` | ✅ | ✅ | ✅ |
+| Allocation (TLAB) | `jdk.ObjectAllocationInNewTLAB` | ❌ | ✅ | Optional |
+| Allocation (outside) | `jdk.ObjectAllocationOutsideTLAB` | ❌ | ✅ | Optional |
+| Lock contention | `jdk.JavaMonitorEnter` | ❌ | Partial | ✅ (lower threshold) |
+| Thread park | `jdk.ThreadPark` | ❌ | Partial | ✅ |
+| Thread statistics | `jdk.JavaThreadStatistics` | ✅ | ✅ | ✅ |
+| JVM info | `jdk.JVMInformation` | ✅ | ✅ | ✅ |
+
+**Summary:**
+- General analysis → use `profile.jfc`
+- Deep lock / allocation analysis → use `hotpath.jfc`
+- In production, consider disabling allocation events depending on traffic load
+
+---
+
+## 2. Quickstart (Recommended)
+
+Record on application startup with a single JVM flag:
 
 ```bash
 java \
@@ -38,18 +37,17 @@ java \
   -jar app.jar
 ```
 
-### 설명
-
-* `%t` : 시간 기반 파일명 (덮어쓰기 방지)
-* `profile` : Hotpath 분석에 적합한 설정
-* `dumponexit=true` : 정상 종료 시 자동 저장
+| Option | Description |
+|--------|-------------|
+| `%t` | Timestamp in filename — prevents overwrites |
+| `settings=profile` | Enables most events Hotpath needs |
+| `dumponexit=true` | Automatically saves the file on normal JVM exit |
 
 ---
 
-# 3️⃣ Hotpath 전용 설정 사용 (심화 분석)
+## 3. Custom JFC for Full Coverage
 
-Lock contention과 Allocation까지 모두 보고 싶다면
-Hotpath 전용 설정 파일을 사용합니다.
+For deep lock contention and allocation analysis, use the Hotpath-specific configuration:
 
 ```bash
 java \
@@ -59,7 +57,9 @@ java \
 
 ---
 
-# 4️⃣ 일정 시간만 녹화
+## 4. Fixed-Duration Recording
+
+Useful when you want to capture only a specific load test window:
 
 ```bash
 java \
@@ -67,54 +67,43 @@ java \
   -jar app.jar
 ```
 
-테스트 구간만 측정할 때 사용합니다.
-
 ---
 
-# 5️⃣ 실행 중인 프로세스에 붙기 (jcmd)
+## 5. Attach to a Running Process (jcmd)
 
-### 1) PID 확인
+No restart needed — attach JFR to any running JVM:
 
 ```bash
+# 1. Find the PID
 jps -l
-```
 
-### 2) 녹화 시작
-
-```bash
+# 2. Start recording
 jcmd <PID> JFR.start name=hotpath settings=profile filename=hotpath.jfr
-```
 
-### 3) 녹화 상태 확인
-
-```bash
+# 3. Check status
 jcmd <PID> JFR.check
-```
 
-### 4) 파일 저장
-
-```bash
+# 4. Dump to file
 jcmd <PID> JFR.dump name=hotpath filename=hotpath.jfr
-```
 
-### 5) 종료
-
-```bash
+# 5. Stop
 jcmd <PID> JFR.stop name=hotpath
 ```
 
 ---
 
-# 6️⃣ Hotpath 권장 JFC 설정 (핵심만)
+## 6. Recommended JFC Settings
 
-Hotpath는 아래 이벤트를 활성화하는 설정을 권장합니다.
+Key event overrides for `hotpath.jfc` (based on `profile.jfc`):
 
 ```xml
+<!-- More precise CPU profiling -->
 <event name="jdk.ExecutionSample">
   <setting name="enabled">true</setting>
   <setting name="period">10 ms</setting>
 </event>
 
+<!-- Capture lock waits >= 1 ms (profile default is higher) -->
 <event name="jdk.JavaMonitorEnter">
   <setting name="enabled">true</setting>
   <setting name="threshold">1 ms</setting>
@@ -125,6 +114,7 @@ Hotpath는 아래 이벤트를 활성화하는 설정을 권장합니다.
   <setting name="threshold">1 ms</setting>
 </event>
 
+<!-- Allocation tracking (optional — adds overhead) -->
 <event name="jdk.ObjectAllocationInNewTLAB">
   <setting name="enabled">true</setting>
 </event>
@@ -134,44 +124,50 @@ Hotpath는 아래 이벤트를 활성화하는 설정을 권장합니다.
 </event>
 ```
 
-### ⚠ 참고
-
-* `ExecutionSample` 10ms → 더 정밀하지만 약간의 오버헤드 증가
-* Allocation 이벤트는 트래픽 많은 운영 서버에서는 오버헤드 증가 가능
-* Lock 분석이 필요 없다면 threshold를 높이거나 비활성화 가능
-
----
-
-# 7️⃣ 오버헤드 가이드 (대략적 기준)
-
-| 설정                 | 예상 오버헤드 | 사용 권장     |
-| ------------------ | ------- | --------- |
-| default            | ~1%     | 운영 상시     |
-| profile            | ~2%     | 개발 / 스테이징 |
-| hotpath (alloc 포함) | ~2–5%   | 성능 분석 세션  |
-
-> 실제 오버헤드는 워크로드에 따라 달라질 수 있습니다.
+> **Notes:**
+> - `ExecutionSample` at 10 ms gives more precise hot-method data at a slight CPU cost
+> - Allocation events can add 5–10% overhead on high-throughput production servers
+> - If lock analysis is not needed, raise the threshold or disable the event
 
 ---
 
-# 8️⃣ 운영에서 안전하게 쓰는 팁
+## 7. Overhead Reference
 
-장시간 녹화 시 디스크 사용을 제한하세요.
+| Configuration | Estimated overhead | Recommended for |
+|---------------|:-----------------:|-----------------|
+| `default.jfc` | ~1% | Always-on production monitoring |
+| `profile.jfc` | ~2% | Development / staging |
+| `hotpath.jfc` (with alloc) | ~2–5% | Dedicated profiling sessions |
+
+> Actual overhead varies with workload.
+
+---
+
+## 8. Limiting Disk Usage in Production
+
+For long-running recordings, cap file size to avoid disk pressure:
 
 ```bash
--XX:StartFlightRecording=filename=hotpath-%t.jfr,settings=profile,maxsize=1G,maxage=30m
+java \
+  -XX:StartFlightRecording=filename=hotpath-%t.jfr,settings=profile,maxsize=1G,maxage=30m \
+  -jar app.jar
 ```
 
-* `maxsize` : 최대 파일 크기
-* `maxage` : 오래된 데이터 자동 삭제
+| Option | Description |
+|--------|-------------|
+| `maxsize` | Maximum file size |
+| `maxage` | Automatically drop data older than this |
 
 ---
 
-# 9️⃣ 빠른 선택 가이드
+## 9. Quick Selection Guide
 
-| 목적                           | 추천 설정       |
-| ---------------------------- | ----------- |
-| 운영 모니터링                      | default     |
-| 일반 성능 분석                     | profile     |
-| GC + Allocation + Lock 심층 분석 | hotpath.jfc |
+| Goal | Recommended setting |
+|------|---------------------|
+| Always-on production monitoring | `default.jfc` |
+| General performance analysis | `profile.jfc` |
+| Deep GC + Allocation + Lock analysis | `hotpath.jfc` |
 
+---
+
+한국어 문서: [JFR-RECORDING-GUIDE.ko.md](./JFR-RECORDING-GUIDE.ko.md)

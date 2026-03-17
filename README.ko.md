@@ -1,9 +1,13 @@
 # Hotpath
 
-JFR(Java Flight Recorder) 파일을 분석해 사람이 읽을 수 있는 HTML 리포트로 변환하는 CLI 도구.
+JFR(Java Flight Recorder) 파일 및 async-profiler collapsed stacks를 분석해 HTML 리포트로 변환하는 CLI 도구.
 
-```
+```bash
+# JFR 분석
 java -jar hotpath.jar recording.jfr
+
+# 플레임 그래프 분석 (async-profiler collapsed stacks)
+java -jar hotpath.jar profile.collapsed
 ```
 
 → `report.html` 단일 파일 생성. [샘플 리포트 보기](https://yyubin.github.io/hotpath/sample-report.html)
@@ -26,11 +30,15 @@ JDK 21 이상 필요. 별도 설치 없음.
 ## 특징
 
 - **JFR 네이티브 파싱** — `jdk.jfr.consumer` 내장 API로 외부 의존성 없이 직접 파싱
+- **플레임 그래프 분석** — async-profiler collapsed stacks를 받아 인터랙티브 d3-flamegraph 리포트 생성
 - **단일 패스 스트리밍** — 수백 MB JFR도 메모리 부담 없이 처리
 - **단일 HTML 출력** — CDN 없이 오프라인에서도 열리는 자기완결형 리포트
+- **입력 타입 자동 감지** — 매직 바이트·확장자·파일 구조로 JFR / collapsed stacks 자동 판별
 - **Fat JAR 배포** — JDK만 있으면 설치 없이 바로 실행
 
 ## 분석 항목
+
+### JFR 분석
 
 | 카테고리 | 수집 지표 |
 |----------|-----------|
@@ -40,8 +48,18 @@ JDK 21 이상 필요. 별도 설치 없음.
 | **Threads** | 피크·평균 스레드 수, Lock Contention 누적, 최장 대기 모니터 |
 | **Findings** | 이상 패턴 자동 감지 (CRITICAL / WARNING / INFO) |
 
+### 플레임 그래프 분석
+
+| 카테고리 | 수집 지표 |
+|----------|-----------|
+| **Flame Graph** | 클릭 zoom / 텍스트 검색, 호버 시 self/total % 표시 |
+| **Hot Methods** | Self time Top 10, Total time Top 10 |
+| **Package Breakdown** | 레이어별 CPU 점유율 — Application / Framework / JDK / JVM Internal |
+| **Findings** | CPU 병목 감지, 깊은 스택 경고, 재귀 감지 |
+
 ## 리포트 구성
 
+### JFR 리포트
 ```
 ┌─ Summary      Findings 카드 (심각도별 카운트)
 ├─ Findings     이슈 목록 + 원인·권고사항
@@ -49,6 +67,17 @@ JDK 21 이상 필요. 별도 설치 없음.
 ├─ GC           pause 타임라인 + 분포 히스토그램 + 통계
 ├─ Memory       힙 추이 차트 + Top Allocators 테이블
 └─ Threads      스레드 수 통계 + Lock Contention 상위
+```
+
+### 플레임 그래프 리포트
+```
+┌─ Summary          Findings 카드 (심각도별 카운트)
+├─ Findings         이슈 목록 + 원인·권고사항
+├─ Overview         총 샘플 수, 최대 스택 깊이, 고유 프레임 수
+├─ Flame Graph      인터랙티브 뷰 — 클릭으로 zoom, 검색으로 하이라이트
+├─ Hot Methods      Self time Top 10 테이블
+└─ Package          레이어 비율 파이 차트 + Total time 막대 차트
+   Breakdown
 ```
 
 ---
@@ -60,14 +89,31 @@ JDK 21 이상 필요. 별도 설치 없음.
 ## 사용법
 
 ```bash
-# 기본 — report.html 생성
+# JFR 분석 — report.html 생성
 java -jar hotpath.jar recording.jfr
+
+# 플레임 그래프 분석 (async-profiler collapsed stacks)
+java -jar hotpath.jar profile.collapsed
+java -jar hotpath.jar profile.stacks
 
 # 출력 파일 지정
 java -jar hotpath.jar recording.jfr -o my-report.html
 
+# 입력 타입 강제 지정 (기본: AUTO)
+java -jar hotpath.jar profile.txt --type flamegraph
+
 # 도움말
 java -jar hotpath.jar --help
+```
+
+### async-profiler로 collapsed stacks 생성
+
+```bash
+# 실행 중인 프로세스를 30초 프로파일링
+./asprof -d 30 -o collapsed -f profile.collapsed <PID>
+
+# Java agent 방식
+java -agentpath:/path/to/libasyncProfiler.so=start,event=cpu,collapsed,file=profile.collapsed -jar app.jar
 ```
 
 ## 빌드
@@ -103,22 +149,22 @@ jcmd <PID> JFR.dump name=hotpath filename=recording.jfr
 ## 내부 파이프라인
 
 ```
-.jfr
-  │
-  ▼  jdk.jfr.consumer.RecordingFile (단일 패스)
-[JfrReader + EventRouter]
-  │
-  ├─► CpuHandler / GcHandler / MemoryHandler / ThreadHandler
-  │
-  ▼  1초 버킷 집계
-[TimelineBuilder]
-  │
-  ▼  이상 탐지 → Finding 생성
-[Analyzers]
-  │
-  ▼  AnalysisResult → JSON → HTML 인라인 임베드
-[HtmlRenderer]
-  │
+.jfr 파일                                   .collapsed / .stacks 파일
+  │                                                │
+  ▼  RecordingFile (단일 패스)                    ▼  줄 단위 텍스트 파싱
+[JfrReader + EventRouter]              [CollapsedStacksReader]
+  │                                                │
+  ├─► CpuHandler / GcHandler / ...               ▼  재귀 트리 구성
+  │                                    [FlameGraphBuilder]  →  FlameNode root
+  ▼  1초 버킷 집계                               │
+[TimelineBuilder]                                 ▼  hot frames, 패키지 비율 집계
+  │                                    [FlameGraphAnalyzer]
+  ▼  이상 탐지 → Finding 생성                    │
+[Analyzers]                                       ▼
+  │                                    [FlameGraphHtmlRenderer]
+  ▼                                               │
+[HtmlRenderer]                                    ▼
+  │                                    flamegraph-report.html
   ▼
 report.html
 ```
@@ -130,9 +176,11 @@ report.html
 | 역할 | 기술 |
 |------|------|
 | JFR 파싱 | `jdk.jfr.consumer` (JDK 내장) |
+| Collapsed stacks 파싱 | 순수 Java (외부 의존성 없음) |
 | CLI | Picocli 4.7 |
 | JSON | Jackson + jackson-datatype-jsr310 |
-| 차트 | Plotly.js (HTML 인라인) |
+| 차트 | Plotly.js (CDN) |
+| 플레임 그래프 | d3-flamegraph (CDN) |
 | 빌드 | Gradle + Shadow Plugin |
 
 ---

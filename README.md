@@ -1,9 +1,13 @@
 # Hotpath
 
-A CLI tool that analyzes Java Flight Recorder (JFR) files and converts them into a human-readable HTML report.
+A CLI tool that analyzes Java Flight Recorder (JFR) files and async-profiler collapsed stacks, converting them into a human-readable HTML report.
 
-```
+```bash
+# JFR analysis
 java -jar hotpath.jar recording.jfr
+
+# Flame graph analysis (async-profiler collapsed stacks)
+java -jar hotpath.jar profile.collapsed
 ```
 
 Produces a single `report.html` file. [View sample report](https://yyubin.github.io/hotpath/sample-report.html)
@@ -26,11 +30,15 @@ Requires JDK 21+. No installation needed.
 ## Features
 
 - **Native JFR parsing** — Uses the built-in `jdk.jfr.consumer` API with zero external dependencies
+- **Flame graph analysis** — Analyzes async-profiler collapsed stacks with an interactive d3-flamegraph view
 - **Single-pass streaming** — Handles recordings of hundreds of MB without memory pressure
 - **Self-contained HTML output** — Works offline with no CDN dependencies
+- **Auto input detection** — Detects JFR vs. collapsed stacks automatically from magic bytes, extension, or file structure
 - **Fat JAR distribution** — Runs anywhere a JDK is installed
 
 ## What It Analyzes
+
+### JFR Analysis
 
 | Category | Metrics |
 |----------|---------|
@@ -40,8 +48,18 @@ Requires JDK 21+. No installation needed.
 | **Threads** | Peak/avg thread count, lock contention total, longest monitor wait |
 | **Findings** | Automatic anomaly detection (CRITICAL / WARNING / INFO) |
 
+### Flame Graph Analysis
+
+| Category | Metrics |
+|----------|---------|
+| **Flame Graph** | Interactive zoom/search view with self/total % on hover |
+| **Hot Methods** | Self time Top 10, Total time Top 10 |
+| **Package Breakdown** | CPU share by layer — Application / Framework / JDK / JVM Internal |
+| **Findings** | CPU bottleneck detection, deep stack warning, recursion detection |
+
 ## Report Layout
 
+### JFR Report
 ```
 ┌─ Summary      Finding cards by severity
 ├─ Findings     Issue list with cause and recommendation
@@ -49,6 +67,17 @@ Requires JDK 21+. No installation needed.
 ├─ GC           Pause timeline + distribution histogram + stats
 ├─ Memory       Heap usage chart + Top Allocators table
 └─ Threads      Thread count stats + Lock Contention table
+```
+
+### Flame Graph Report
+```
+┌─ Summary          Finding cards by severity
+├─ Findings         Issue list with cause and recommendation
+├─ Overview         Total samples, max stack depth, unique frames
+├─ Flame Graph      Interactive view — click to zoom, search to highlight
+├─ Hot Methods      Self time Top 10 table
+└─ Package          Layer breakdown pie chart + Total time bar chart
+   Breakdown
 ```
 
 ---
@@ -60,14 +89,31 @@ Requires JDK 21+. No installation needed.
 ## Usage
 
 ```bash
-# Basic — outputs report.html
+# JFR analysis — outputs report.html
 java -jar hotpath.jar recording.jfr
+
+# Flame graph analysis (async-profiler collapsed stacks)
+java -jar hotpath.jar profile.collapsed
+java -jar hotpath.jar profile.stacks
 
 # Custom output path
 java -jar hotpath.jar recording.jfr -o my-report.html
 
+# Force input type (AUTO by default)
+java -jar hotpath.jar profile.txt --type flamegraph
+
 # Help
 java -jar hotpath.jar --help
+```
+
+### Generating Collapsed Stacks with async-profiler
+
+```bash
+# Profile a running process and export collapsed stacks
+./asprof -d 30 -o collapsed -f profile.collapsed <PID>
+
+# Or via Java agent
+java -agentpath:/path/to/libasyncProfiler.so=start,event=cpu,collapsed,file=profile.collapsed -jar app.jar
 ```
 
 ## Build from Source
@@ -112,49 +158,58 @@ hotpath/
 │       │   ├── AnalysisResult
 │       │   ├── CpuSummary / GcSummary / MemorySummary / ThreadSummary
 │       │   ├── Finding            (CRITICAL / WARNING / INFO)
-│       │   └── TimeBucket         1-second aggregation slot
-│       ├── reader/                JFR parsing
-│       │   ├── JfrReader          Single-pass streaming
+│       │   ├── TimeBucket         1-second aggregation slot
+│       │   └── flamegraph/
+│       │       ├── FlameNode      Recursive call tree node
+│       │       ├── FlameGraphResult
+│       │       ├── FlameGraphSummary
+│       │       ├── HotFrame / HotPath
+│       │       └── FlameGraphMeta
+│       ├── reader/                Parsing layer
+│       │   ├── JfrReader          Single-pass JFR streaming
 │       │   ├── EventRouter        Dispatches events by type
 │       │   ├── TimelineBuilder    Aggregates into 1s buckets
-│       │   └── handler/
-│       │       ├── CpuHandler     jdk.CPULoad, jdk.ExecutionSample
-│       │       ├── GcHandler      jdk.GarbageCollection, jdk.GCHeapSummary
-│       │       ├── MemoryHandler  jdk.ObjectAllocation*
-│       │       ├── ThreadHandler  jdk.JavaMonitorEnter, jdk.JavaThreadStatistics
-│       │       └── MetaHandler    jdk.JVMInformation
+│       │   ├── handler/
+│       │   │   ├── CpuHandler     jdk.CPULoad, jdk.ExecutionSample
+│       │   │   ├── GcHandler      jdk.GarbageCollection, jdk.GCHeapSummary
+│       │   │   ├── MemoryHandler  jdk.ObjectAllocation*
+│       │   │   ├── ThreadHandler  jdk.JavaMonitorEnter, jdk.JavaThreadStatistics
+│       │   │   └── MetaHandler    jdk.JVMInformation
+│       │   └── flamegraph/
+│       │       ├── CollapsedStacksReader  Parses collapsed stacks format
+│       │       └── FlameGraphBuilder      Builds FlameNode tree
 │       ├── analyzer/              Anomaly detection + Finding generation
-│       │   ├── CpuAnalyzer
-│       │   ├── GcAnalyzer
-│       │   ├── MemoryAnalyzer
-│       │   └── ThreadAnalyzer
+│       │   ├── CpuAnalyzer / GcAnalyzer / MemoryAnalyzer / ThreadAnalyzer
+│       │   └── flamegraph/
+│       │       └── FlameGraphAnalyzer     Hot frames, package breakdown, Findings
 │       └── renderer/
-│           └── HtmlRenderer       AnalysisResult → JSON → report.html
+│           ├── HtmlRenderer             AnalysisResult → report.html
+│           └── FlameGraphHtmlRenderer   FlameGraphResult → flamegraph report
 └── hotpath-cli/                   CLI entry point
     └── src/main/java/.../
-        ├── HotpathCommand         Picocli command
+        ├── HotpathCommand         Auto-detects input type, routes pipeline
         └── Main
 ```
 
-### Pipeline
+### Pipelines
 
 ```
-.jfr file
-  │
-  ▼  jdk.jfr.consumer.RecordingFile (single pass)
-[JfrReader + EventRouter]
-  │
-  ├─► CpuHandler / GcHandler / MemoryHandler / ThreadHandler
-  │
-  ▼  Aggregate into 1-second buckets
-[TimelineBuilder]
-  │
-  ▼  Anomaly detection → generate Findings
-[Analyzers]
-  │
-  ▼  AnalysisResult → JSON → inline embed into HTML
-[HtmlRenderer]
-  │
+.jfr file                                    .collapsed / .stacks file
+  │                                                │
+  ▼  RecordingFile (single pass)                  ▼  line-by-line text parsing
+[JfrReader + EventRouter]              [CollapsedStacksReader]
+  │                                                │
+  ├─► CpuHandler / GcHandler / ...               ▼  build recursive tree
+  │                                    [FlameGraphBuilder]  →  FlameNode root
+  ▼  1-second bucket aggregation                  │
+[TimelineBuilder]                                 ▼  hot frames, package breakdown
+  │                                    [FlameGraphAnalyzer]
+  ▼  anomaly detection                            │
+[Analyzers]                                       ▼
+  │                                    [FlameGraphHtmlRenderer]
+  ▼                                               │
+[HtmlRenderer]                                    ▼
+  │                                       flamegraph-report.html
   ▼
 report.html
 ```
@@ -166,8 +221,8 @@ report.html
 | Phase | Description | Status |
 |-------|-------------|--------|
 | 1 | JFR → HTML report (CPU, GC, Memory, Threads) | ✅ |
-| 2 | `gc.log` + Gatling `stats.json` integration + cross-source correlation | Planned |
-| 3 | async-profiler flame graph embed | Planned |
+| 2 | async-profiler collapsed stacks → flame graph HTML report | ✅ |
+| 3 | `gc.log` + Gatling `stats.json` integration + cross-source correlation | Planned |
 | 4 | Before/after performance comparison (`before.jfr` vs `after.jfr`) | Planned |
 | 5 | Gradle Plugin wrapper | Planned |
 
@@ -178,9 +233,11 @@ report.html
 | Role | Technology |
 |------|------------|
 | JFR parsing | `jdk.jfr.consumer` (JDK built-in) |
+| Collapsed stacks parsing | Pure Java (no external dependencies) |
 | CLI | Picocli 4.7 |
 | JSON | Jackson + jackson-datatype-jsr310 |
-| Charts | Plotly.js (inlined in HTML) |
+| Charts | Plotly.js (CDN) |
+| Flame graph | d3-flamegraph (CDN) |
 | Build | Gradle + Shadow Plugin |
 
 ---

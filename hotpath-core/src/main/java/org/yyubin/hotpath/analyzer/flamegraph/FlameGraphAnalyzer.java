@@ -1,5 +1,6 @@
 package org.yyubin.hotpath.analyzer.flamegraph;
 
+import org.yyubin.hotpath.i18n.Messages;
 import org.yyubin.hotpath.model.Finding;
 import org.yyubin.hotpath.model.Finding.Severity;
 import org.yyubin.hotpath.model.flamegraph.*;
@@ -7,6 +8,12 @@ import org.yyubin.hotpath.model.flamegraph.*;
 import java.util.*;
 
 public class FlameGraphAnalyzer {
+
+    private final Messages messages;
+
+    public FlameGraphAnalyzer(Messages messages) {
+        this.messages = messages;
+    }
 
     private static final int    TOP_N              = 10;
     private static final int    TOP_PATHS          = 5;
@@ -79,17 +86,17 @@ public class FlameGraphAnalyzer {
                 findings.add(new Finding(
                         Severity.CRITICAL,
                         "FlameGraph",
-                        String.format("심각한 CPU 병목: %s (self %.1f%%)", top.name(), top.selfPct()),
-                        String.format("'%s' 메서드가 전체 샘플의 %.1f%%를 단독으로 차지합니다.", top.name(), top.selfPct()),
-                        "해당 메서드의 알고리즘 복잡도와 호출 빈도를 우선적으로 점검하세요."
+                        messages.format("flamegraph.critical_bottleneck.title", top.name(), top.selfPct()),
+                        messages.format("flamegraph.critical_bottleneck.desc", top.name(), top.selfPct()),
+                        messages.get("flamegraph.critical_bottleneck.rec")
                 ));
             } else if (top.selfPct() > WARNING_SELF_PCT) {
                 findings.add(new Finding(
                         Severity.WARNING,
                         "FlameGraph",
-                        String.format("특정 메서드에 CPU 집중: %s (self %.1f%%)", top.name(), top.selfPct()),
-                        String.format("'%s' 메서드가 전체 샘플의 %.1f%%를 차지합니다.", top.name(), top.selfPct()),
-                        "해당 메서드 내부 로직에 최적화 여지가 있는지 확인하세요."
+                        messages.format("flamegraph.cpu_focus.title", top.name(), top.selfPct()),
+                        messages.format("flamegraph.cpu_focus.desc", top.name(), top.selfPct()),
+                        messages.get("flamegraph.cpu_focus.rec")
                 ));
             }
         }
@@ -99,9 +106,9 @@ public class FlameGraphAnalyzer {
             findings.add(new Finding(
                     Severity.WARNING,
                     "FlameGraph",
-                    String.format("비정상적으로 깊은 스택 감지 (최대 깊이 %d)", summary.maxDepth()),
-                    String.format("스택 최대 깊이가 %d으로, 재귀 호출이나 지나치게 깊은 호출 체인이 의심됩니다.", summary.maxDepth()),
-                    "StackOverflowError 위험이 있는지 확인하고, 재귀를 반복문으로 전환하는 것을 고려하세요."
+                    messages.format("flamegraph.deep_stack.title", summary.maxDepth()),
+                    messages.format("flamegraph.deep_stack.desc", summary.maxDepth()),
+                    messages.get("flamegraph.deep_stack.rec")
             ));
         }
 
@@ -111,9 +118,9 @@ public class FlameGraphAnalyzer {
             findings.add(new Finding(
                     Severity.INFO,
                     "FlameGraph",
-                    String.format("JVM 인터프리터/JIT 비중 높음 (%.1f%%)", jvmInternalPct),
-                    String.format("샘플의 %.1f%%가 JVM 내부 프레임([unknown], Interpreter 등)에서 수집됐습니다.", jvmInternalPct),
-                    "JVM 워밍업이 충분히 이루어졌는지 확인하고, 프로파일링 시작 전 애플리케이션을 충분히 예열하세요."
+                    messages.format("flamegraph.jvm_internal.title", jvmInternalPct),
+                    messages.format("flamegraph.jvm_internal.desc", jvmInternalPct),
+                    messages.get("flamegraph.jvm_internal.rec")
             ));
         }
 
@@ -123,9 +130,9 @@ public class FlameGraphAnalyzer {
             findings.add(new Finding(
                     Severity.INFO,
                     "FlameGraph",
-                    String.format("애플리케이션 코드 비중 낮음 (%.1f%%)", appPct),
-                    String.format("샘플의 %.1f%%만이 애플리케이션 코드에서 수집됐습니다. 대부분의 시간이 프레임워크나 JDK에서 소비되고 있습니다.", appPct),
-                    "I/O 대기, 프레임워크 오버헤드, 직렬화 비용 등을 점검하세요."
+                    messages.format("flamegraph.low_app_code.title", appPct),
+                    messages.format("flamegraph.low_app_code.desc", appPct),
+                    messages.get("flamegraph.low_app_code.rec")
             ));
         }
 

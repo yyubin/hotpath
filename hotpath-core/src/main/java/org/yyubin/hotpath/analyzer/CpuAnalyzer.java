@@ -1,5 +1,6 @@
 package org.yyubin.hotpath.analyzer;
 
+import org.yyubin.hotpath.i18n.Messages;
 import org.yyubin.hotpath.model.CpuSummary;
 import org.yyubin.hotpath.model.Finding;
 import org.yyubin.hotpath.model.Finding.Severity;
@@ -10,6 +11,12 @@ import java.util.*;
 public class CpuAnalyzer {
 
     private static final double HIGH_CPU_THRESHOLD = 0.80;
+
+    private final Messages messages;
+
+    public CpuAnalyzer(Messages messages) {
+        this.messages = messages;
+    }
 
     public CpuSummary buildSummary(CpuHandler handler) {
         var samples = handler.getSamples();
@@ -55,10 +62,9 @@ public class CpuAnalyzer {
             findings.add(new Finding(
                     sev,
                     "CPU",
-                    String.format("높은 CPU 사용률 (최대 %.0f%%)", summary.maxUser() * 100),
-                    String.format("JVM CPU 사용률 최대 %.0f%%, 평균 %.0f%%",
-                            summary.maxUser() * 100, summary.avgUser() * 100),
-                    "Hot Method 상위 항목을 확인하고 불필요한 계산이나 바쁜 대기(busy-wait)가 없는지 점검하세요."
+                    messages.format("cpu.high_usage.title", summary.maxUser() * 100),
+                    messages.format("cpu.high_usage.desc", summary.maxUser() * 100, summary.avgUser() * 100),
+                    messages.get("cpu.high_usage.rec")
             ));
         }
 
@@ -68,10 +74,9 @@ public class CpuAnalyzer {
                 findings.add(new Finding(
                         Severity.WARNING,
                         "CPU",
-                        String.format("단일 메서드 CPU 집중: %s#%s (%.1f%%)", top.className(), top.methodName(), top.percent()),
-                        String.format("%s#%s 메서드가 전체 CPU 샘플의 %.1f%%를 차지합니다.",
-                                top.className(), top.methodName(), top.percent()),
-                        "해당 메서드의 알고리즘 복잡도 또는 호출 빈도를 검토하세요."
+                        messages.format("cpu.hot_method.title", top.className(), top.methodName(), top.percent()),
+                        messages.format("cpu.hot_method.desc", top.className(), top.methodName(), top.percent()),
+                        messages.get("cpu.hot_method.rec")
                 ));
             }
         }

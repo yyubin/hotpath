@@ -1,5 +1,6 @@
 package org.yyubin.hotpath.analyzer;
 
+import org.yyubin.hotpath.i18n.Messages;
 import org.yyubin.hotpath.model.Finding;
 import org.yyubin.hotpath.model.Finding.Severity;
 import org.yyubin.hotpath.model.ThreadSummary;
@@ -12,6 +13,12 @@ import java.util.List;
 public class ThreadAnalyzer {
 
     private static final long HIGH_CONTENTION_MS = 100;
+
+    private final Messages messages;
+
+    public ThreadAnalyzer(Messages messages) {
+        this.messages = messages;
+    }
 
     public ThreadSummary buildSummary(ThreadHandler handler) {
         var counts     = handler.getThreadCounts();
@@ -46,9 +53,9 @@ public class ThreadAnalyzer {
             findings.add(new Finding(
                     sev,
                     "Thread",
-                    String.format("Lock Contention 누적 %d ms", summary.totalLockContentionMs()),
-                    String.format("스레드 락 경합으로 누적 %d ms가 소비되었습니다.", summary.totalLockContentionMs()),
-                    "동기화 범위를 줄이거나 ConcurrentHashMap 등 non-blocking 자료구조로 교체를 검토하세요."
+                    messages.format("thread.lock_contention.title", summary.totalLockContentionMs()),
+                    messages.format("thread.lock_contention.desc", summary.totalLockContentionMs()),
+                    messages.get("thread.lock_contention.rec")
             ));
         }
 
@@ -57,10 +64,9 @@ public class ThreadAnalyzer {
             findings.add(new Finding(
                     Severity.INFO,
                     "Thread",
-                    String.format("최장 락 대기: %s (%d ms)", worst.monitorClass(), worst.waitMs()),
-                    String.format("%s 모니터에서 '%s' 스레드가 %d ms 대기했습니다.",
-                            worst.monitorClass(), worst.blockedThread(), worst.waitMs()),
-                    "해당 모니터를 획득하는 임계 구역(critical section)의 작업량을 줄이세요."
+                    messages.format("thread.worst_lock.title", worst.monitorClass(), worst.waitMs()),
+                    messages.format("thread.worst_lock.desc", worst.monitorClass(), worst.blockedThread(), worst.waitMs()),
+                    messages.get("thread.worst_lock.rec")
             ));
         }
 

@@ -1,5 +1,6 @@
 package org.yyubin.hotpath.analyzer;
 
+import org.yyubin.hotpath.i18n.Messages;
 import org.yyubin.hotpath.model.Finding;
 import org.yyubin.hotpath.model.Finding.Severity;
 import org.yyubin.hotpath.model.MemorySummary;
@@ -10,6 +11,12 @@ import java.util.*;
 public class MemoryAnalyzer {
 
     private static final double HIGH_HEAP_USAGE = 0.85;
+
+    private final Messages messages;
+
+    public MemoryAnalyzer(Messages messages) {
+        this.messages = messages;
+    }
 
     public MemorySummary buildSummary(MemoryHandler handler, long recordingDurationSeconds) {
         var heapSamples  = handler.getHeapSamples();
@@ -54,10 +61,9 @@ public class MemoryAnalyzer {
             findings.add(new Finding(
                     Severity.WARNING,
                     "Memory",
-                    String.format("힙 사용률 %.0f%% 도달", summary.maxHeapUsagePercent() * 100),
-                    String.format("힙 사용률이 최대 %.0f%%까지 상승했습니다. OutOfMemoryError 위험이 있습니다.",
-                            summary.maxHeapUsagePercent() * 100),
-                    "-Xmx를 늘리거나 메모리 누수 여부를 heap dump로 확인하세요."
+                    messages.format("memory.high_heap.title", summary.maxHeapUsagePercent() * 100),
+                    messages.format("memory.high_heap.desc", summary.maxHeapUsagePercent() * 100),
+                    messages.get("memory.high_heap.rec")
             ));
         }
 
@@ -68,9 +74,9 @@ public class MemoryAnalyzer {
                 findings.add(new Finding(
                         Severity.INFO,
                         "Memory",
-                        String.format("최다 할당 클래스: %s (%d MB)", top.className(), mb),
-                        String.format("%s 타입 객체가 총 %d MB 할당되었습니다.", top.className(), mb),
-                        "해당 클래스의 객체 생성 빈도와 생존 기간을 검토하세요."
+                        messages.format("memory.top_allocator.title", top.className(), mb),
+                        messages.format("memory.top_allocator.desc", top.className(), mb),
+                        messages.get("memory.top_allocator.rec")
                 ));
             }
         }

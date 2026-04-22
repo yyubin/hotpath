@@ -2,6 +2,7 @@ package org.yyubin.hotpath;
 
 import org.yyubin.hotpath.analyzer.*;
 import org.yyubin.hotpath.analyzer.flamegraph.FlameGraphAnalyzer;
+import org.yyubin.hotpath.i18n.Messages;
 import org.yyubin.hotpath.model.*;
 import org.yyubin.hotpath.model.flamegraph.*;
 import org.yyubin.hotpath.reader.JfrReader;
@@ -43,27 +44,38 @@ public class HotpathCommand implements Callable<Integer> {
     @Option(names = {"--type"}, description = "입력 파일 타입 강제 지정: AUTO(기본), JFR, FLAMEGRAPH", defaultValue = "AUTO")
     private InputType inputType;
 
-    private final CpuAnalyzer        cpuAnalyzer        = new CpuAnalyzer();
-    private final GcAnalyzer         gcAnalyzer         = new GcAnalyzer();
-    private final MemoryAnalyzer     memoryAnalyzer     = new MemoryAnalyzer();
-    private final ThreadAnalyzer     threadAnalyzer     = new ThreadAnalyzer();
-    private final FlameGraphAnalyzer flameGraphAnalyzer = new FlameGraphAnalyzer();
+    @Option(names = {"--lang"}, description = "Output language tag, e.g. ko (default), en", defaultValue = "ko")
+    private String lang;
+
+    private CpuAnalyzer        cpuAnalyzer;
+    private GcAnalyzer         gcAnalyzer;
+    private MemoryAnalyzer     memoryAnalyzer;
+    private ThreadAnalyzer     threadAnalyzer;
+    private FlameGraphAnalyzer flameGraphAnalyzer;
+    private Messages           messages;
 
     @Override
     public Integer call() throws Exception {
+        messages           = Messages.of(lang);
+        cpuAnalyzer        = new CpuAnalyzer(messages);
+        gcAnalyzer         = new GcAnalyzer(messages);
+        memoryAnalyzer     = new MemoryAnalyzer(messages);
+        threadAnalyzer     = new ThreadAnalyzer(messages);
+        flameGraphAnalyzer = new FlameGraphAnalyzer(messages);
+
         if (!inputFile.toFile().exists()) {
-            System.err.println("오류: 파일을 찾을 수 없습니다 — " + inputFile);
+            System.err.println(messages.format("cli.error.file_not_found", inputFile));
             return 1;
         }
 
         InputType resolved = inputType == InputType.AUTO ? detect(inputFile) : inputType;
-        System.out.printf("분석 중 [%s]: %s%n", resolved, inputFile);
+        System.out.printf(messages.format("cli.info.analyzing", resolved, inputFile) + "%n");
 
         return switch (resolved) {
             case JFR        -> runJfr();
             case FLAMEGRAPH -> runFlameGraph();
             default -> {
-                System.err.println("오류: 파일 타입을 감지할 수 없습니다. --type 옵션으로 명시해 주세요.");
+                System.err.println(messages.get("cli.error.type_unknown"));
                 yield 1;
             }
         };
@@ -103,7 +115,7 @@ public class HotpathCommand implements Callable<Integer> {
         );
 
         AnalysisResult result = new AnalysisResult(meta, timeline, cpu, gc, memory, threads, findings);
-        new HtmlRenderer().render(result, outputFile);
+        new HtmlRenderer(messages.langTag()).render(result, outputFile);
 
         printCompletion(System.currentTimeMillis() - startMs, findings);
         return 0;
@@ -117,7 +129,7 @@ public class HotpathCommand implements Callable<Integer> {
         // 1. Parse
         List<StackEntry> entries = CollapsedStacksReader.read(inputFile);
         if (entries.isEmpty()) {
-            System.err.println("오류: 유효한 스택 항목을 찾을 수 없습니다 — " + inputFile);
+            System.err.println(messages.format("cli.error.no_stack_entries", inputFile));
             return 1;
         }
 
@@ -140,7 +152,7 @@ public class HotpathCommand implements Callable<Integer> {
         );
 
         FlameGraphResult result = new FlameGraphResult(meta, root, summary, findings);
-        new FlameGraphHtmlRenderer().render(result, outputFile);
+        new FlameGraphHtmlRenderer(messages.langTag()).render(result, outputFile);
 
         printCompletion(System.currentTimeMillis() - startMs, findings);
         return 0;
@@ -205,7 +217,7 @@ public class HotpathCommand implements Callable<Integer> {
     // ── helpers ───────────────────────────────────────────────────────────────
 
     private void printCompletion(long elapsed, List<Finding> findings) {
-        System.out.printf("완료 (%d ms) → %s%n", elapsed, outputFile.toAbsolutePath());
+        System.out.printf(messages.format("cli.info.done", elapsed, outputFile.toAbsolutePath()) + "%n");
         System.out.printf("  Findings: CRITICAL=%d  WARNING=%d  INFO=%d%n",
                 count(findings, Finding.Severity.CRITICAL),
                 count(findings, Finding.Severity.WARNING),
